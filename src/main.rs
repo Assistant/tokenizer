@@ -33,6 +33,7 @@ async fn main() {
     let app = Router::new().route("/", get(root)).with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    _ = open::that("http://localhost:3000/");
     axum::serve(listener, app).await.unwrap();
 }
 
