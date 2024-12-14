@@ -2,22 +2,26 @@ use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use directories::ProjectDirs;
 use get_user_input::get_input;
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read_to_string, write};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use tokio::net::TcpListener;
 
 type StateType = State<(String, String, String, Client)>;
 type QueryType = Query<HashMap<String, String>>;
 
+static PROJECT_DIR: LazyLock<ProjectDirs> = LazyLock::new(|| {
+    ProjectDirs::from("moe", "assistant", "tokenizer").expect("Couldn't get project directory.")
+});
+
 #[tokio::main]
 async fn main() {
-    let project_dir = directories::ProjectDirs::from("moe", "assistant", "tokenizer")
-        .expect("Couldn't get project directory.");
-    let config_dir = project_dir.config_local_dir();
+    let config_dir = PROJECT_DIR.config_local_dir();
 
     if !config_dir.exists() {
         create_dir_all(config_dir).expect(&format!(
@@ -25,10 +29,14 @@ async fn main() {
         ));
     }
 
-    let client_id = get_value(config_dir.join("client_id.txt"), "Client ID");
-    let client_secret = get_value(config_dir.join("client_secret.txt"), "Client Secret");
+    let id = get_value(config_dir.join("client_id.txt"), "Client ID");
+    let secret = get_value(config_dir.join("client_secret.txt"), "Client Secret");
     let scopes = get_value(config_dir.join("scopes.txt"), "Scopes");
-    let state = (client_id, client_secret, scopes, Client::new());
+
+    let client = Client::new();
+    let state = (id.clone(), secret.clone(), scopes, client.clone());
+
+    refresh(&id, &secret, config_dir.join("refresh_token.txt"), client).await;
 
     let app = Router::new().route("/", get(root)).with_state(state);
 
@@ -64,6 +72,8 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
             return message("Request Failed", "Failed to parse response.");
         };
 
+        let refresh_token_path = PROJECT_DIR.config_dir().join("refresh_token.txt");
+        _ = write(refresh_token_path, &tokens.refresh_token);
         return success(&tokens.access_token, &tokens.refresh_token);
     }
 
@@ -114,4 +124,37 @@ struct TokenResponse {
     refresh_token: String,
     scope: Vec<String>,
     token_type: String,
+}
+
+async fn refresh(id: &str, secret: &str, path: PathBuf, client: Client) {
+    if let Ok(refresh_token) = read_to_string(&path) {
+        let body = [
+            ("grant_type", "refresh_token"),
+            ("client_id", id),
+            ("client_secret", secret),
+            ("refresh_token", refresh_token.as_str()),
+        ];
+
+        let Ok(request) = client
+            .post("https://id.twitch.tv/oauth2/token")
+            .form(&body)
+            .send()
+            .await
+        else {
+            return;
+        };
+
+        let Ok(tokens) = request.json::<TokenResponse>().await else {
+            return;
+        };
+
+        println!(
+            "\n\nToken refreshed: {}\noauth:{}",
+            tokens.access_token, tokens.access_token
+        );
+
+        _ = write(path, &tokens.refresh_token);
+
+        loop {}
+    }
 }
