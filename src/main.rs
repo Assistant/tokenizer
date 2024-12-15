@@ -8,6 +8,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read_to_string, write};
+use std::io;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tokio::net::TcpListener;
@@ -73,7 +74,7 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
         };
 
         let refresh_token_path = PROJECT_DIR.config_dir().join("refresh_token.txt");
-        _ = write(refresh_token_path, &tokens.refresh_token);
+        _ = trim_write(&refresh_token_path, &tokens.refresh_token);
         return success(&tokens.access_token, &tokens.refresh_token);
     }
 
@@ -88,15 +89,14 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
 }
 
 fn get_value(path: PathBuf, msg: &str) -> String {
-    if let Ok(value) = read_to_string(&path) {
+    if let Ok(value) = trim_read(&path) {
         println!("{msg} found at: {path:?}");
-        value.trim().to_string()
+        value
     } else {
         println!("Please enter your {msg}:");
         let input = get_input!(String).expect("Failed to read input.");
-        let value = input.trim().to_string();
-        write(path, &value).expect(&format!("Failed to write {msg}"));
-        value
+        trim_write(&path, &input).expect(&format!("Failed to write {msg}"));
+        input
     }
 }
 
@@ -116,6 +116,14 @@ fn success(access_token: &str, refresh_token: &str) -> Response {
     message("Success!", &format!("access_token: <kbd>{access_token}</kbd></p><p><kbd>oauth:{access_token}</kbd></p><p>refresh_token: <kbd>{refresh_token}</kbd>"))
 }
 
+fn trim_read(path: &PathBuf) -> io::Result<String> {
+    read_to_string(path).map(|s| s.trim().to_owned())
+}
+
+fn trim_write(path: &PathBuf, content: &str) -> io::Result<()> {
+    write(path, content.trim().to_owned())
+}
+
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -127,7 +135,7 @@ struct TokenResponse {
 }
 
 async fn refresh(id: &str, secret: &str, path: PathBuf, client: Client) {
-    if let Ok(refresh_token) = read_to_string(&path) {
+    if let Ok(refresh_token) = trim_read(&path) {
         let body = [
             ("grant_type", "refresh_token"),
             ("client_id", id),
@@ -149,11 +157,11 @@ async fn refresh(id: &str, secret: &str, path: PathBuf, client: Client) {
         };
 
         println!(
-            "\n\nToken refreshed: {}\noauth:{}",
-            tokens.access_token, tokens.access_token
+            "\n\nToken refreshed: {token}\noauth:{token}",
+            token = tokens.access_token
         );
 
-        _ = write(path, &tokens.refresh_token);
+        _ = trim_write(&path, &tokens.refresh_token);
 
         loop {}
     }
