@@ -73,7 +73,7 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
             return message("Request Failed", "Failed to parse response.");
         };
 
-        let refresh_token_path = PROJECT_DIR.config_dir().join("refresh_token.txt");
+        let refresh_token_path = PROJECT_DIR.config_local_dir().join("refresh_token.txt");
         _ = trim_write(&refresh_token_path, &tokens.refresh_token);
         return success(&tokens.access_token, &tokens.refresh_token);
     }
