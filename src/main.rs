@@ -57,10 +57,10 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
         let uri = format!("http://localhost:{}", *PORT);
         let body = [
             ("grant_type", "authorization_code"),
-            ("client_id", id.as_str()),
-            ("client_secret", secret.as_str()),
-            ("code", code.as_str()),
-            ("redirect_uri", uri.as_str()),
+            ("client_id", &id),
+            ("client_secret", &secret),
+            ("code", &code),
+            ("redirect_uri", &uri),
         ];
 
         let Ok(request) = client
@@ -143,7 +143,7 @@ async fn refresh(id: &str, secret: &str, path: PathBuf, client: Client) {
             ("grant_type", "refresh_token"),
             ("client_id", id),
             ("client_secret", secret),
-            ("refresh_token", refresh_token.as_str()),
+            ("refresh_token", &refresh_token),
         ];
 
         let Ok(request) = client
