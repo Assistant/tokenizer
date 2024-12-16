@@ -8,9 +8,9 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read_to_string, write};
-use std::io;
 use std::path::PathBuf;
 use std::sync::LazyLock;
+use std::{env, io};
 use tokio::net::TcpListener;
 
 type StateType = State<(String, String, String, Client)>;
@@ -19,6 +19,8 @@ type QueryType = Query<HashMap<String, String>>;
 static PROJECT_DIR: LazyLock<ProjectDirs> = LazyLock::new(|| {
     ProjectDirs::from("moe", "assistant", "tokenizer").expect("Couldn't get project directory.")
 });
+static PORT: LazyLock<u16> =
+    LazyLock::new(|| env::var("PORT").map_or(3000, |p| p.parse().unwrap_or(3000)));
 
 #[tokio::main]
 async fn main() {
@@ -41,8 +43,8 @@ async fn main() {
 
     let app = Router::new().route("/", get(root)).with_state(state);
 
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
-    _ = open::that("http://localhost:3000/");
+    let listener = TcpListener::bind(("127.0.0.1", *PORT)).await.unwrap();
+    _ = open::that(format!("http://localhost:{}/", *PORT));
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -52,12 +54,13 @@ async fn root(State((id, secret, scope, client)): StateType, Query(params): Quer
     }
 
     if let Some(code) = params.get("code") {
+        let uri = format!("http://localhost:{}", *PORT);
         let body = [
             ("grant_type", "authorization_code"),
             ("client_id", id.as_str()),
             ("client_secret", secret.as_str()),
             ("code", code.as_str()),
-            ("redirect_uri", "http://localhost:3000"),
+            ("redirect_uri", uri.as_str()),
         ];
 
         let Ok(request) = client
@@ -102,7 +105,7 @@ fn get_value(path: PathBuf, msg: &str) -> String {
 
 fn index(id: &str, scope: &str) -> Response {
     Html::from(format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>Authorize</title></head><body align="center"><div role="main" align="center"><a href="https://id.twitch.tv/oauth2/authorize?client_id={id}&redirect_uri=http://localhost:3000&response_type=code&scope={scope}">Authorize</a></div></body></html>"#
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>Authorize</title></head><body align="center"><div role="main" align="center"><a href="https://id.twitch.tv/oauth2/authorize?client_id={id}&redirect_uri=http://localhost:{}&response_type=code&scope={scope}">Authorize</a></div></body></html>"#, *PORT
     )).into_response()
 }
 
