@@ -121,7 +121,7 @@ fn trim_read(path: &PathBuf) -> io::Result<String> {
 }
 
 fn trim_write(path: &PathBuf, content: &str) -> io::Result<()> {
-    write(path, content.trim().to_owned())
+    write(path, content.trim())
 }
 
 #[allow(unused)]
